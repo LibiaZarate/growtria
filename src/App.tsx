@@ -361,13 +361,19 @@ export default function App() {
         body: JSON.stringify({ email: authEmail, password: authPassword }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "La autenticación falló");
+      const contentTypeText = response.headers.get("content-type");
+      if (contentTypeText && contentTypeText.indexOf("application/json") !== -1) {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "La autenticación falló");
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      setToken(data.token);
-      setUser(data.user);
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        setToken(data.token);
+        setUser(data.user);
+      } else {
+        const text = await response.text();
+        throw new Error("El servidor de API no está respondiendo (probablemente falta backend en el hosting). " + response.status);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
