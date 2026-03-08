@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-bg: #F9FAFA; /* Main application background - very light pale */
+  --color-brand-sidebar: #F1F3F2; /* Sidebar background */
+  
+  --font-sans: "Inter", -apple-system, sans-serif;
+  
+  --radius-sm: 0.5rem;
+  --radius: 1rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-2xl: 2.5rem;
+  --radius-3xl: 3rem;
+  --radius-full: 9999px;
+
+  /* Real Seto soft shadow */
+  --shadow-soft: 0 4px 14px 0 rgba(0,0,0,0.03);
+  --shadow-card: 0 4px 20px rgba(0,0,0,0.03);
+}
+
+body {
+  /* Subtle pastel glow at the bottom edges */
+  background: radial-gradient(circle at bottom left, rgba(235,215,200,0.4) 0%, transparent 40%),
+              radial-gradient(circle at bottom right, rgba(245,210,195,0.4) 0%, transparent 40%);
+  background-color: var(--color-brand-bg);
+  color: #1A1C1A;
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: transparent;
+}
