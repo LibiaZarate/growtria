@@ -441,28 +441,110 @@ async function startServer() {
         runId, userId, cleanUrl, provider, "scraping"
       );
 
-      // 2. Apify Scraping
-      const client = new ApifyClient({ token: cleanApifyToken });
+      // 2. Data Extraction: Meta Graph API (Official) OR Apify (Fallback)
+      let items: any[] = [];
 
-      // Determine if it's a hashtag or profile URL
-      const isHashtag = cleanUrl.includes("/explore/tags/");
+      if (settings.facebook_access_token) {
+        // --- META GRAPH API FLOW ---
+        const fbToken = settings.facebook_access_token;
+        
+        // A) Get user's Facebook Pages
+        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${fbToken}`);
+        const pagesData = await pagesRes.json();
+        
+        if (!pagesData.data || pagesData.data.length === 0) {
+          throw new Error("No se encontraron páginas de Facebook vinculadas a tu cuenta. Asegúrate de tener una Página de FB conectada a tu Instagram.");
+        }
 
-      const input = {
-        "directUrls": [cleanUrl],
-        "resultsLimit": 20,
-        "resultsType": "posts",
-        "searchType": isHashtag ? "hashtag" : "user",
-        "searchLimit": 1,
-        "proxyConfiguration": {
-          "useApifyProxy": true
-        },
-        "extendOutputFunction": "($) => { return { scrapedAt: new Date().toISOString() }; }",
-        "addParentData": true
-      };
+        let igAccountId = null;
+        
+        // B) Find the Instagram Business Account ID attached to one of the Pages
+        for (const page of pagesData.data) {
+          const igRes = await fetch(`https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${fbToken}`);
+          const igData = await igRes.json();
+          if (igData.instagram_business_account) {
+            igAccountId = igData.instagram_business_account.id;
+            break;
+          }
+        }
 
-      // Start the actor and wait for it to finish
-      const run = await client.actor("apify/instagram-scraper").call(input);
-      let { items } = await client.dataset(run.defaultDatasetId).listItems();
+        if (!igAccountId) {
+          throw new Error("No se encontró ninguna cuenta de Instagram Business/Creator vinculada a tus páginas de Facebook.");
+        }
+
+        // C) Fetch Media (Posts & Reels)
+        const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count&limit=30&access_token=${fbToken}`);
+        const mediaData = await mediaRes.json();
+
+        if (!mediaData.data) {
+          throw new Error("Error al obtener las publicaciones de Instagram Graph API. Posible token expirado.");
+        }
+
+        // D) Fetch deeper insights for each media & transform to expected schema
+        for (const m of mediaData.data) {
+          let sharesCount = 0;
+          let playsCount = 0;
+          let viewsCount = 0;
+
+          try {
+            const metricIds = m.media_type === 'VIDEO' ? 'plays,reach,saved,total_interactions' : 'impressions,reach,saved';
+            const insightsRes = await fetch(`https://graph.facebook.com/v19.0/${m.id}/insights?metric=${metricIds}&access_token=${fbToken}`);
+            const insightsData = await insightsRes.json();
+            
+            if (insightsData.data) {
+              const getVal = (name: string) => insightsData.data.find((i: any) => i.name === name)?.values[0]?.value || 0;
+              
+              if (m.media_type === 'VIDEO') {
+                playsCount = getVal('plays');
+                viewsCount = getVal('reach');
+                // Estimating shares if absolute value isn't directly exposed
+                sharesCount = getVal('total_interactions') - (m.like_count || 0) - (m.comments_count || 0) - getVal('saved');
+              } else {
+                viewsCount = getVal('impressions');
+              }
+            }
+          } catch(e) { console.error("Error fetching insights for media", m.id); }
+
+          items.push({
+            id: m.id,
+            url: m.permalink,
+            caption: m.caption,
+            type: m.media_type === 'VIDEO' ? 'Video' : (m.media_type === 'CAROUSEL_ALBUM' ? 'Sidecar' : 'Image'),
+            timestamp: m.timestamp,
+            likesCount: m.like_count || 0,
+            commentsCount: m.comments_count || 0,
+            videoPlayCount: playsCount,
+            videoViewCount: viewsCount,
+            sharesCount: Math.max(0, sharesCount),
+            displayUrl: m.thumbnail_url || m.media_url
+          });
+        }
+      } else {
+        // --- FALLBACK TO APIFY ---
+        if (!cleanApifyToken) {
+           throw new Error("Falta configurar la conexión oficial de Meta o tu Apify Token personal.");
+        }
+
+        const client = new ApifyClient({ token: cleanApifyToken });
+        const isHashtag = cleanUrl.includes("/explore/tags/");
+
+        const input = {
+          "directUrls": [cleanUrl],
+          "resultsLimit": 20,
+          "resultsType": "posts",
+          "searchType": isHashtag ? "hashtag" : "user",
+          "searchLimit": 1,
+          "proxyConfiguration": {
+            "useApifyProxy": true
+          },
+          "extendOutputFunction": "($) => { return { scrapedAt: new Date().toISOString() }; }",
+          "addParentData": true
+        };
+
+        const apiRun = await client.actor("apify/instagram-scraper").call(input);
+        const dataset = await client.dataset(apiRun.defaultDatasetId).listItems();
+        items = dataset.items;
+      }
 
       // Filter by content type if requested
       if (contentType === "posts") {
