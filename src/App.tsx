@@ -948,6 +948,37 @@ export default function App() {
                       </div>
                     </div>
                     
+                    {/* META CONNECTION BLOCK */}
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-3xl border border-blue-100 shadow-sm space-y-4 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
+                      
+                      <div className="relative z-10">
+                        <h3 className="font-bold text-lg text-blue-900 border-b border-blue-200/50 pb-3 flex items-center justify-between">
+                          <span className="flex items-center gap-2"><Facebook className="text-blue-600" size={20} /> Conexión Oficial con Meta API</span>
+                          {settings.has_facebook_token ? (
+                            <span className="px-3 py-1 bg-green-100 text-green-700 text-[10px] uppercase tracking-wider rounded-full font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Conectado</span>
+                          ) : (
+                            <span className="px-3 py-1 bg-red-100 text-red-700 text-[10px] uppercase tracking-wider rounded-full font-bold flex items-center gap-1"><AlertCircle size={12} /> Desconectado</span>
+                          )}
+                        </h3>
+                        <p className="text-[13px] text-blue-800/80 font-medium mt-3 mb-5 leading-relaxed">
+                          La integración oficial con la <strong className="text-blue-900">Instagram Graph API</strong> permite a Jiro acceder directamente a las verdaderas impresiones, reproducciones y alcance de tus reels, reemplazando el uso de integraciones de terceros (como Apify) para una precisión de grado analítico.
+                        </p>
+                        
+                        <div className="flex gap-3 items-center">
+                          <button
+                            type="button"
+                            onClick={handleConnectFacebook}
+                            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-sm transition-all flex-1 ${settings.has_facebook_token ? 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'}`}
+                          >
+                            <Facebook size={18} />
+                            {settings.has_facebook_token ? "Reconectar o Cambiar Instagram Business" : "Vincular Cuenta de Instagram Business"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-sm space-y-4">
                       <h3 className="font-bold text-sm border-b border-slate-100 pb-2">Claves de API (Seguridad)</h3>
                       <div className="flex gap-4">
