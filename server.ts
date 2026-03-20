@@ -10,14 +10,26 @@ import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, 'public/uploads'))
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, uniqueSuffix + '-' + file.originalname)
+  }
+});
+const upload = multer({ storage: storage });
+
 const db = new Database("database.sqlite");
-const JWT_SECRET = process.env.JWT_SECRET || "creator-impact-secret-key-2026";
+const JWT_SECRET = process.env.JWT_SECRET || "clinics-arquitect-media-secret-key-2026";
 
 // Initialize DB
 db.exec(`
@@ -82,8 +94,52 @@ db.exec(`
     big_promise TEXT,
     problems_solved TEXT,
     unique_mechanism TEXT,
+    jiro_prompt TEXT,
+    jiro_knowledge TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS hub_pages (
+    id TEXT PRIMARY KEY,
+    user_id TEXT UNIQUE,
+    slug TEXT UNIQUE,
+    title TEXT,
+    bio_text TEXT,
+    avatar_url TEXT,
+    primary_cta_text TEXT,
+    primary_cta_url TEXT,
+    theme_color TEXT DEFAULT 'indigo',
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS leads (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    hub_page_id TEXT,
+    name TEXT,
+    phone TEXT,
+    email TEXT,
+    source TEXT,
+    resource_requested TEXT,
+    status TEXT DEFAULT 'new', -- new, contacted, appointment_booked
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(hub_page_id) REFERENCES hub_pages(id)
+  );
+  
+  CREATE TABLE IF NOT EXISTS metrics_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    hub_page_id TEXT,
+    event_type TEXT,
+    resource_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(hub_page_id) REFERENCES hub_pages(id)
   );
 
   CREATE TABLE IF NOT EXISTS chat_messages (
@@ -114,7 +170,8 @@ aiInsightsColumns.forEach(col => {
 // Migration: Add columns to user_settings if they don't exist
 const userSettingsColumns = [
   "brand_values", "brand_personality", "brand_vision",
-  "product_service", "big_promise", "problems_solved", "unique_mechanism"
+  "product_service", "big_promise", "problems_solved", "unique_mechanism",
+  "core_identity", "core_problem", "initial_niche", "brand_archetype", "brand_narrative", "content_distribution"
 ];
 
 userSettingsColumns.forEach(col => {
@@ -123,6 +180,20 @@ userSettingsColumns.forEach(col => {
   } catch (e) {
     console.log(`Adding ${col} column to user_settings...`);
     db.exec(`ALTER TABLE user_settings ADD COLUMN ${col} TEXT`);
+  }
+});
+
+// Migration: Add columns to hub_pages if they don't exist
+const hubPagesColumns = [
+  "specialty", "intro_video_url", "products_json", "certifications_json", "whatsapp_number"
+];
+
+hubPagesColumns.forEach(col => {
+  try {
+    db.prepare(`SELECT ${col} FROM hub_pages LIMIT 1`).get();
+  } catch (e) {
+    console.log(`Adding ${col} column to hub_pages...`);
+    db.exec(`ALTER TABLE hub_pages ADD COLUMN ${col} TEXT`);
   }
 });
 
@@ -150,6 +221,7 @@ const authenticateToken = (req: any, res: Response, next: NextFunction) => {
 async function startServer() {
   const app = express();
   app.use(express.json());
+  app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
   // Auth Routes
   app.post("/api/auth/signup", async (req, res) => {
@@ -184,7 +256,118 @@ async function startServer() {
     res.json({ token, user: { id: user.id, email: user.email } });
   });
 
+  // Facebook OAuth logic
+  app.get("/api/auth/facebook", authenticateToken, (req: any, res) => {
+    const appId = process.env.VITE_FB_APP_ID;
+    const redirectUri = process.env.VITE_FB_REDIRECT_URI || "http://localhost:3000/api/auth/facebook/callback";
+    const state = req.user.id; // Passing user ID as state to link account in callback
+    
+    if (!appId) {
+      return res.status(500).json({ error: "Falta configurar VITE_FB_APP_ID en el servidor." });
+    }
+
+    const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${state}&scope=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement`;
+    res.json({ url });
+  });
+
+  app.get("/api/auth/facebook/callback", async (req, res) => {
+    const { code, state } = req.query;
+    
+    // State contains the user_id that started the flow
+    if (!code || !state) {
+      return res.status(400).send("Faltan parámetros de Facebook.");
+    }
+    
+    const appId = process.env.VITE_FB_APP_ID;
+    const appSecret = process.env.VITE_FB_APP_SECRET;
+    const redirectUri = process.env.VITE_FB_REDIRECT_URI || "http://localhost:3000/api/auth/facebook/callback";
+
+    try {
+      // 1. Exchange code for short-lived access token
+      const tokenRes = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${redirectUri}&client_secret=${appSecret}&code=${code}`);
+      const tokenData = await tokenRes.json();
+      
+      if (tokenData.error) throw new Error(tokenData.error.message);
+      
+      const shortLivedToken = tokenData.access_token;
+      
+      // 2. Exchange short-lived token for long-lived token
+      const longRes = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`);
+      const longData = await longRes.json();
+      
+      if (longData.error) throw new Error(longData.error.message);
+      
+      const longToken = longData.access_token;
+      
+      // Calculate expiration for long token (approx 60 days)
+      const expiresIn = longData.expires_in || 5184000; // default 60 days
+      const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+      
+      // 3. Save correctly to user_settings table
+      const existing = db.prepare("SELECT user_id FROM user_settings WHERE user_id = ?").get(state as string);
+      
+      if (existing) {
+        db.prepare("UPDATE user_settings SET facebook_access_token = ?, token_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?").run(longToken, expiresAt, state);
+      } else {
+        db.prepare("INSERT INTO user_settings (user_id, facebook_access_token, token_expires_at) VALUES (?, ?, ?)").run(state, longToken, expiresAt);
+      }
+      
+      // Finally redirect to frontend settings page to show success
+      res.redirect("/?view=settings&fb_success=true");
+    } catch (err: any) {
+      console.error("Error en FB Auth:", err);
+      res.redirect("/?view=settings&fb_error=true");
+    }
+  });
+
+  app.post("/api/public/lead", async (req, res) => {
+    const { slug, name, email, resource_requested } = req.body;
+    if (!slug || !name || !email) return res.status(400).json({ error: "Missing required fields" });
+
+    try {
+      const hubPage = db.prepare("SELECT * FROM hub_pages WHERE slug = ?").get(slug) as any;
+      if (!hubPage) return res.status(404).json({ error: "Page not found" });
+
+      const leadId = Math.random().toString(36).substring(7);
+      db.prepare(`
+        INSERT INTO leads (id, user_id, hub_page_id, name, email, resource_requested)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(leadId, hubPage.user_id, hubPage.id, name, email, resource_requested);
+
+      res.json({ success: true, leadId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/public/metrics/click", async (req, res) => {
+    const { slug, event_type, resource_id } = req.body;
+    if (!slug || !event_type) return res.status(400).json({ error: "Missing required fields" });
+
+    try {
+      const hubPage = db.prepare("SELECT * FROM hub_pages WHERE slug = ?").get(slug) as any;
+      if (!hubPage) return res.status(404).json({ error: "Page not found" });
+
+      const logId = Math.random().toString(36).substring(7);
+      db.prepare(`
+        INSERT INTO metrics_logs (id, user_id, hub_page_id, event_type, resource_id)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(logId, hubPage.user_id, hubPage.id, event_type, resource_id || null);
+
+      res.json({ success: true, logId });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Protected API Routes
+  app.post("/api/upload", authenticateToken, upload.single('file'), (req: any, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  });
   app.post("/api/analyze", authenticateToken, async (req: any, res) => {
     const { instagramUrl, provider, contentType, apiKey, apifyToken } = req.body;
     const userId = req.user.id;
@@ -202,17 +385,40 @@ async function startServer() {
     try {
       // 0. Fetch User Settings and History for Context
       const settings = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(userId) as any;
+      const hubPage = db.prepare("SELECT title FROM hub_pages WHERE user_id = ?").get(userId) as any;
+      const docName = hubPage?.title || "Pediatric OS";
       const brandContext = settings ? `
-        CONTEXTO DE MARCA:
-        - Valores e Identidad: ${settings.brand_values || "No especificado"}
-        - Personalidad: ${settings.brand_personality || "No especificado"}
-        - Visión (Cómo se muestra al mundo): ${settings.brand_vision || "No especificado"}
+        === SISTEMA OPERATIVO DE MARCA PERSONAL (${docName}) ===
         
-        CONTEXTO OPERACIONAL / PRODUCTO:
-        - Producto/Servicio: ${settings.product_service || "No especificado"}
-        - Gran Promesa: ${settings.big_promise || "No especificado"}
-        - Problemas que resuelve: ${settings.problems_solved || "No especificado"}
-        - Mecanismo Único: ${settings.unique_mechanism || "No especificado"}
+        1. IDENTIDAD NUCLEAR (Misión, Visión, Tipo de mente):
+        ${settings.core_identity || "No especificado"}
+        
+        2. EL PROBLEMA DEL MUNDO QUE RESUELVE:
+        ${settings.core_problem || settings.problems_solved || "No especificado"}
+        
+        3. EL NICHO INICIAL (Campo de batalla):
+        ${settings.initial_niche || "No especificado"}
+        
+        4. SISTEMA DE VALORES (Protocolos Operativos):
+        ${settings.brand_values || "No especificado"}
+        
+        5. ARQUETIPO DE MARCA (Personalidad y Tono):
+        ${settings.brand_archetype || settings.brand_personality || "No especificado"}
+        
+        6. MECANISMO ÚNICO (Sistemas, no sólo servicios):
+        ${settings.unique_mechanism || "No especificado"}
+        
+        7. LA GRAN PROMESA:
+        ${settings.big_promise || "No especificado"}
+        
+        8. LA NARRATIVA DE MARCA (Historia continua y de futuro):
+        ${settings.brand_narrative || "No especificado"}
+        
+        9. DISTRIBUCIÓN DE CONTENIDO (Foco y Mezcla de Atracción, Autoridad, Conversión):
+        ${settings.content_distribution || "No especificado"}
+        
+        PRODUCTO / SERVICIO ACTUAL:
+        ${settings.product_service || "No especificado"}
       ` : "";
 
       // Fetch last 3 successful runs for historical context
@@ -395,7 +601,7 @@ async function startServer() {
           response_format: { type: "json_object" }
         });
         aiResponseText = completion.choices[0].message.content || "";
-      } else if (provider === "claude") {
+      } else if (provider === "anthropic" || provider === "claude") {
         const anthropic = new Anthropic({ apiKey: cleanApiKey });
         const msg = await anthropic.messages.create({
           model: "claude-3-5-sonnet-20240620",
@@ -418,18 +624,27 @@ async function startServer() {
       }
 
       // 5. Store Insights
+      // 5. Store Insights
+      const insightsId = Math.random().toString(36).substring(7);
+      const summaryStr = aiData.summary ? String(aiData.summary) : "";
+      const topPostsStr = aiData.top_posts_analysis ? String(aiData.top_posts_analysis) : "";
+      const patternsStr = aiData.patterns ? JSON.stringify(aiData.patterns) : null;
+      const recsStr = aiData.recommendations ? JSON.stringify(aiData.recommendations) : null;
+      const avatarStr = aiData.avatar_analysis ? JSON.stringify(aiData.avatar_analysis) : null;
+      const predictionsStr = aiData.predictions ? JSON.stringify(aiData.predictions) : null;
+
       db.prepare(`
         INSERT INTO ai_insights (id, analysis_run_id, summary, top_posts_json, patterns_json, recommendations_json, avatar_analysis_json, predictions_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        Math.random().toString(36).substring(7),
+        insightsId,
         runId,
-        aiData.summary,
-        aiData.top_posts_analysis,
-        JSON.stringify(aiData.patterns),
-        JSON.stringify(aiData.recommendations),
-        JSON.stringify(aiData.avatar_analysis),
-        JSON.stringify(aiData.predictions)
+        summaryStr,
+        topPostsStr,
+        patternsStr,
+        recsStr,
+        avatarStr,
+        predictionsStr
       );
 
       // Update status and thumbnail
@@ -483,7 +698,15 @@ async function startServer() {
 
   // Settings Endpoints
   app.get("/api/settings", authenticateToken, (req: any, res) => {
-    const settings = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(req.user.id);
+    const settings = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(req.user.id) as any;
+    if (settings) {
+      settings.has_facebook_token = !!settings.facebook_access_token;
+      delete settings.facebook_access_token;
+      settings.has_ai_api_key = !!settings.ai_api_key;
+      delete settings.ai_api_key;
+      settings.has_apify_token = !!settings.apify_token;
+      delete settings.apify_token;
+    }
     res.json(settings || {});
   });
 
@@ -491,10 +714,16 @@ async function startServer() {
     const {
       instagram_url, ai_provider, ai_api_key, apify_token,
       brand_values, brand_personality, brand_vision,
-      product_service, big_promise, problems_solved, unique_mechanism
+      product_service, big_promise, problems_solved, unique_mechanism,
+      core_identity, core_problem, initial_niche,
+      brand_archetype, brand_narrative, content_distribution,
+      jiro_prompt, jiro_knowledge
     } = req.body;
 
-    const existing = db.prepare("SELECT user_id FROM user_settings WHERE user_id = ?").get(req.user.id);
+    const existing = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(req.user.id) as any;
+
+    const finalAiKey = (ai_api_key === '••••••••••••••••' || ai_api_key === '') && existing ? existing.ai_api_key : ai_api_key;
+    const finalApifyToken = (apify_token === '••••••••••••••••' || apify_token === '') && existing ? existing.apify_token : apify_token;
 
     if (existing) {
       db.prepare(`
@@ -502,12 +731,18 @@ async function startServer() {
         SET instagram_url = ?, ai_provider = ?, ai_api_key = ?, apify_token = ?, 
             brand_values = ?, brand_personality = ?, brand_vision = ?,
             product_service = ?, big_promise = ?, problems_solved = ?, unique_mechanism = ?,
+            core_identity = ?, core_problem = ?, initial_niche = ?,
+            brand_archetype = ?, brand_narrative = ?, content_distribution = ?,
+            jiro_prompt = ?, jiro_knowledge = ?,
             updated_at = CURRENT_TIMESTAMP 
         WHERE user_id = ?
       `).run(
-        instagram_url, ai_provider, ai_api_key, apify_token,
+        instagram_url, ai_provider, finalAiKey, finalApifyToken,
         brand_values, brand_personality, brand_vision,
         product_service, big_promise, problems_solved, unique_mechanism,
+        core_identity, core_problem, initial_niche,
+        brand_archetype, brand_narrative, content_distribution,
+        jiro_prompt, jiro_knowledge,
         req.user.id
       );
     } else {
@@ -515,17 +750,79 @@ async function startServer() {
         INSERT INTO user_settings (
           user_id, instagram_url, ai_provider, ai_api_key, apify_token,
           brand_values, brand_personality, brand_vision,
-          product_service, big_promise, problems_solved, unique_mechanism
+          product_service, big_promise, problems_solved, unique_mechanism,
+          core_identity, core_problem, initial_niche,
+          brand_archetype, brand_narrative, content_distribution,
+          jiro_prompt, jiro_knowledge
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        req.user.id, instagram_url, ai_provider, ai_api_key, apify_token,
+        req.user.id, instagram_url, ai_provider, finalAiKey, finalApifyToken,
         brand_values, brand_personality, brand_vision,
-        product_service, big_promise, problems_solved, unique_mechanism
+        product_service, big_promise, problems_solved, unique_mechanism,
+        core_identity, core_problem, initial_niche,
+        brand_archetype, brand_narrative, content_distribution,
+        jiro_prompt, jiro_knowledge
       );
     }
 
     res.json({ success: true });
+  });
+
+  // Hub Builder Endpoints
+  app.get("/api/hub", authenticateToken, (req: any, res) => {
+    let hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
+    if (!hub) {
+      const defaultId = Math.random().toString(36).substring(7);
+      const defaultSlug = "doc-" + Math.random().toString(36).substring(7);
+      db.prepare(`
+        INSERT INTO hub_pages (id, user_id, slug, title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(defaultId, req.user.id, defaultSlug, "Dra. Pediatra", "Escribe tu biografía médica...", "", "Pediatra Certificada", "", "[]", "[]");
+      hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
+    }
+    res.json(hub);
+  });
+
+  app.post("/api/hub", authenticateToken, (req: any, res) => {
+    const { title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json, whatsapp_number, slug } = req.body;
+    db.prepare(`
+      UPDATE hub_pages 
+      SET title = ?, bio_text = ?, avatar_url = ?, specialty = ?, intro_video_url = ?, 
+          products_json = ?, certifications_json = ?, whatsapp_number = ?, slug = ?,
+          updated_at = CURRENT_TIMESTAMP 
+      WHERE user_id = ?
+    `).run(
+      title || "", bio_text || "", avatar_url || "", specialty || "", intro_video_url || "",
+      products_json || "[]", certifications_json || "[]", whatsapp_number || "", slug,
+      req.user.id
+    );
+    res.json({ success: true });
+  });
+
+  // Public Hub Route (No Authentication)
+  app.get("/api/public/hub/:slug", (req, res) => {
+    const hub = db.prepare("SELECT * FROM hub_pages WHERE slug = ?").get(req.params.slug);
+    if (!hub) return res.status(404).json({ error: "Página no encontrada" });
+    res.json(hub);
+  });
+
+  app.get("/api/leads", authenticateToken, (req: any, res) => {
+    try {
+      const leads = db.prepare("SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC").all(req.user.id);
+      res.json(leads);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/metrics", authenticateToken, (req: any, res) => {
+    try {
+      const metricsLogs = db.prepare("SELECT * FROM metrics_logs WHERE user_id = ? ORDER BY created_at DESC").all(req.user.id);
+      res.json(metricsLogs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Summary Endpoint
@@ -573,18 +870,45 @@ async function startServer() {
     try {
       // 1. Get Context (Settings, History, Top Posts)
       const settings = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(userId) as any;
+      const hubPage = db.prepare("SELECT title FROM hub_pages WHERE user_id = ?").get(userId) as any;
+      const docName = hubPage?.title || "Pediatric OS";
       const latestRun = db.prepare("SELECT id FROM analysis_runs WHERE user_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 1").get(userId) as any;
 
       let context = "Eres un Agente Experto en Estrategia de Contenido para Instagram y Marca Personal.\n";
 
       if (settings) {
         context += `
-          CONTEXTO DE MARCA:
-          - Valores: ${settings.brand_values || "No especificado"}
-          - Personalidad: ${settings.brand_personality || "No especificado"}
-          - Visión: ${settings.brand_vision || "No especificado"}
-          - Producto/Servicio: ${settings.product_service || "No especificado"}
-          - Promesa: ${settings.big_promise || "No especificado"}
+          === SISTEMA OPERATIVO DE MARCA PERSONAL (${docName}) ===
+          
+          1. IDENTIDAD NUCLEAR (Misión, Visión, Tipo de mente):
+          ${settings.core_identity || "No especificado"}
+          
+          2. EL PROBLEMA DEL MUNDO QUE RESUELVE:
+          ${settings.core_problem || settings.problems_solved || "No especificado"}
+          
+          3. EL NICHO INICIAL (Campo de batalla):
+          ${settings.initial_niche || "No especificado"}
+          
+          4. SISTEMA DE VALORES (Protocolos Operativos):
+          ${settings.brand_values || "No especificado"}
+          
+          5. ARQUETIPO DE MARCA (Personalidad y Tono):
+          ${settings.brand_archetype || settings.brand_personality || "No especificado"}
+          
+          6. MECANISMO ÚNICO (Sistemas, no sólo servicios):
+          ${settings.unique_mechanism || "No especificado"}
+          
+          7. LA GRAN PROMESA:
+          ${settings.big_promise || "No especificado"}
+          
+          8. LA NARRATIVA DE MARCA (Historia continua y de futuro):
+          ${settings.brand_narrative || "No especificado"}
+          
+          9. DISTRIBUCIÓN DE CONTENIDO (Foco y Mezcla de Atracción, Autoridad, Conversión):
+          ${settings.content_distribution || "No especificado"}
+          
+          PRODUCTO / SERVICIO ACTUAL:
+          ${settings.product_service || "No especificado"}
         `;
       }
 
@@ -638,7 +962,7 @@ async function startServer() {
           model: "gpt-4o-mini"
         });
         aiResponseText = completion.choices[0].message.content || "";
-      } else if (aiProvider === "claude") {
+      } else if (aiProvider === "anthropic" || aiProvider === "claude") {
         const anthropic = new Anthropic({ apiKey: aiApiKey });
         const msg = await anthropic.messages.create({
           model: "claude-3-5-sonnet-20240620",
@@ -666,6 +990,69 @@ async function startServer() {
   app.delete("/api/chat/messages", authenticateToken, (req: any, res) => {
     db.prepare("DELETE FROM chat_messages WHERE user_id = ?").run(req.user.id);
     res.json({ success: true });
+  });
+
+  // Public Patient Chat Endpoint
+  app.post("/api/public/chat", async (req, res) => {
+    const { slug, message, chatHistory } = req.body;
+    if (!slug || !message) return res.status(400).json({ error: "Faltan parámetros" });
+
+    try {
+      const hub = db.prepare("SELECT user_id, title FROM hub_pages WHERE slug = ?").get(slug) as any;
+      if (!hub) return res.status(404).json({ error: "No encontrado" });
+
+      const settings = db.prepare("SELECT * FROM user_settings WHERE user_id = ?").get(hub.user_id) as any;
+
+      const aiProvider = settings?.ai_provider || "gemini";
+      const aiApiKey = settings?.ai_api_key || process.env.GEMINI_API_KEY;
+      if (!aiApiKey) return res.status(500).json({ error: "El doctor no tiene IA configurada." });
+
+      const systemPrompt = `
+        ERES JIRO AI:
+        ${settings?.jiro_prompt ? settings.jiro_prompt : `Eres el Asistente Virtual ("Jiro") de la Clínica/Consultorio de: ${hub.title}.
+        Tu rol es atender a pacientes, madres y padres que visitan la página pública del doctor.`}
+        
+        CONTEXTO DEL DOCTOR Y LA CLÍNICA:
+        - Valores: ${settings?.brand_values || 'Profesional y amable'}
+        - Personalidad: ${settings?.brand_personality || 'Empático y seguro'}
+        - Servicios: ${settings?.product_service || 'Atención pediátrica'}
+        - Promesa: ${settings?.big_promise || 'Cuidado de tu familia'}
+        - Conocimiento de la Clínica (FAQs, Horarios, Precios, etc):
+          ${settings?.jiro_knowledge || 'No hay información extra proporcionada. Si no sabes algo, pide que contacte directo al doctor.'}
+        
+        REGLAS:
+        - Responde corto, conciso, y siempre cálido (usa emojis limitados).
+        - Si detectas emergencias médicas o problemas críticos, recomienda buscar ayuda médica inmediatamente.
+        - No das diagnósticos médicos definitivos.
+        - Dirige a la agenda o recursos si es adecuado.
+        
+        HISTORIAL DE CHAT:
+        ${chatHistory || 'Sin historial aún.'}
+        
+        PACIENTE: ${message}
+      `;
+
+      let aiResponseText = "";
+      if (aiProvider === "gemini") {
+        const ai = new GoogleGenAI({ apiKey: aiApiKey });
+        const result = await ai.models.generateContent({ model: "gemini-1.5-flash", contents: systemPrompt });
+        aiResponseText = result.text || "";
+      } else if (aiProvider === "openai") {
+        const openai = new OpenAI({ apiKey: aiApiKey });
+        const completion = await openai.chat.completions.create({ messages: [{ role: "user", content: systemPrompt }], model: "gpt-4o-mini" });
+        aiResponseText = completion.choices[0].message.content || "";
+      } else if (aiProvider === "anthropic" || aiProvider === "claude") {
+        const anthropic = new Anthropic({ apiKey: aiApiKey });
+        const msg = await anthropic.messages.create({ model: "claude-3-5-sonnet-20240620", max_tokens: 500, messages: [{ role: "user", content: systemPrompt }] });
+        // @ts-ignore
+        aiResponseText = msg.content[0].text;
+      }
+
+      res.json({ reply: aiResponseText });
+    } catch (error: any) {
+      console.error("Public Chat failed:", error);
+      res.status(500).json({ error: "Error de conexión con la IA." });
+    }
   });
 
   // Vite middleware for development
