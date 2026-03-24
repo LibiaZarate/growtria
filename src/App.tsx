@@ -86,7 +86,10 @@ export default function App() {
     if (!token) return;
     try {
       const res = await fetch("/api/chat/messages", { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) setChatMessages(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setChatMessages(Array.isArray(data) ? data : []);
+      }
     } catch (err) { }
   };
 
@@ -158,7 +161,10 @@ export default function App() {
     if (!token) return;
     try {
       const res = await fetch("/api/leads", { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) setLeads(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setLeads(Array.isArray(data) ? data : []);
+      }
     } catch (err) { }
   };
 
@@ -166,7 +172,10 @@ export default function App() {
     if (!token) return;
     try {
       const res = await fetch("/api/metrics", { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) setMetrics(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(Array.isArray(data) ? data : []);
+      }
     } catch (err) { }
   };
 
@@ -247,8 +256,13 @@ export default function App() {
     try {
       const res = await fetch("/api/history", { headers: { "Authorization": `Bearer ${token}` } });
       if (res.status === 401) { handleLogout(); return; }
-      setHistory(await res.json());
-    } catch (err) { }
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(Array.isArray(data) ? data : []);
+      } else {
+        setHistory([]);
+      }
+    } catch (err) { setHistory([]); }
   };
 
   const loadRun = async (runId: string) => {
