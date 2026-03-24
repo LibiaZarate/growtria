@@ -116,6 +116,13 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
+  // Add new columns if they don't exist
+  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN specialty TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN intro_video_url TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN products_json TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN certifications_json TEXT").run(); } catch (e) {}
+  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN whatsapp_number TEXT").run(); } catch (e) {}
+
   CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     user_id TEXT,
