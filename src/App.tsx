@@ -385,7 +385,7 @@ export default function App() {
               <div className="md:hidden flex items-center justify-center mx-auto mb-6">
                 <img src="/logo.png" alt="Logo" className="w-32 h-32 rounded-full object-cover mix-blend-multiply drop-shadow-sm" />
               </div>
-              <h1 className="text-4xl font-black tracking-tight text-[#2d2824]">Growvia</h1>
+              <h1 className="text-4xl font-black tracking-tight text-[#2d2824]">Growtria</h1>
               <p className="text-[#867562] font-medium tracking-wide">Inicia sesión en tu Studio</p>
             </div>
 
@@ -442,7 +442,7 @@ export default function App() {
           <div className="px-8 pt-8 pb-6 flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-900">
               <CustomLogo className="w-12 h-12 -ml-2 drop-shadow-sm mix-blend-multiply opacity-90" />
-              <span className="font-bold text-xl tracking-tight leading-none text-slate-900">Growvia</span>
+              <span className="font-bold text-xl tracking-tight leading-none text-slate-900">Growtria</span>
             </div>
           </div>
           <nav className="flex-1 overflow-y-auto px-4 py-2 space-y-1 hide-scrollbar">
@@ -593,7 +593,7 @@ export default function App() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Nombre Público del Doctor/Clínica</label><input required value={hub.title} onChange={e => setHub({ ...hub, title: e.target.value })} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
-                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Tu Enlace (Slug)</label><div className="flex bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden focus-within:border-[#dd8872] focus-within:bg-white transition-colors"><span className="pl-4 py-3 text-sm font-bold text-slate-400">growvia.com/</span><input required value={hub.slug} onChange={e => setHub({ ...hub, slug: e.target.value })} className="w-full bg-transparent px-2 py-3 text-sm outline-none font-medium text-slate-700" /></div></div>
+                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Tu Enlace (Slug)</label><div className="flex bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden focus-within:border-[#dd8872] focus-within:bg-white transition-colors"><span className="pl-4 py-3 text-sm font-bold text-slate-400">growtria.com/</span><input required value={hub.slug} onChange={e => setHub({ ...hub, slug: e.target.value })} className="w-full bg-transparent px-2 py-3 text-sm outline-none font-medium text-slate-700" /></div></div>
                         <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Especialidad</label><input required value={hub.specialty} onChange={e => setHub({ ...hub, specialty: e.target.value })} placeholder="Ej. Pediatra Pro-lactancia" className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
                         <div><label className="text-[11px] font-bold text-slate-500 block mb-1">WhatsApp para Pacientes</label><input value={hub.whatsapp_number || ""} onChange={e => setHub({ ...hub, whatsapp_number: e.target.value })} placeholder="521..." className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
                       </div>

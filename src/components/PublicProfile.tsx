@@ -307,7 +307,7 @@ export const PublicProfile = ({ hubData, onSwitchMode }: { hubData: any, onSwitc
                             <a href="#" className="w-10 h-10 bg-[#F9F6F0] rounded-full flex items-center justify-center hover:bg-[#dd8872] hover:text-white transition-colors"><Instagram size={20} /></a>
                         </div>
                         <div className="flex items-center gap-2 font-bold text-sm bg-slate-50 px-4 py-2 rounded-xl">
-                            <CustomLogo className="w-5 h-5" /> Powered by Growvia
+                            <CustomLogo className="w-5 h-5" /> Powered by Growtria
                         </div>
                     </div>
                 </div>

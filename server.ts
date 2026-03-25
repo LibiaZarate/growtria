@@ -860,17 +860,22 @@ async function startServer() {
 
   // Hub Builder Endpoints
   app.get("/api/hub", authenticateToken, (req: any, res) => {
-    let hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
-    if (!hub) {
-      const defaultId = Math.random().toString(36).substring(7);
-      const defaultSlug = "doc-" + Math.random().toString(36).substring(7);
-      db.prepare(`
-        INSERT INTO hub_pages (id, user_id, slug, title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(defaultId, req.user.id, defaultSlug, "Dra. Pediatra", "Escribe tu biografía médica...", "", "Pediatra Certificada", "", "[]", "[]");
-      hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
+    try {
+      let hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
+      if (!hub) {
+        const defaultId = Math.random().toString(36).substring(7);
+        const defaultSlug = "doc-" + Math.random().toString(36).substring(7);
+        db.prepare(`
+          INSERT INTO hub_pages (id, user_id, slug, title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(defaultId, req.user.id, defaultSlug, "Dra. Pediatra", "Escribe tu biografía médica...", "", "Pediatra Certificada", "", "[]", "[]");
+        hub = db.prepare("SELECT * FROM hub_pages WHERE user_id = ?").get(req.user.id);
+      }
+      res.json(hub);
+    } catch (e: any) {
+      console.error("[ERROR IN /api/hub GET]:", e.message);
+      res.status(500).json({ error: e.message });
     }
-    res.json(hub);
   });
 
   app.post("/api/hub", authenticateToken, (req: any, res) => {
