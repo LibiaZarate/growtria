@@ -4,9 +4,10 @@ import {
   MessageSquare, ExternalLink, BarChart3, Lightbulb, Eye, ArrowLeft,
   History, Lock, Settings, Sparkles, Save, User, User as UserIcon, LogOut,
   Trash2, AlertCircle, LayoutDashboard, Smartphone, BookOpen, Play, Video, Plus, Edit2, Clock, Users, Send, MapPin, Calendar, CheckCircle, Search, CalendarDays, ArrowRight, MessageCircle,
-  Paperclip, Sliders, Mic, ArrowUp, LayoutGrid, Heart, PlaySquare, Target, Bot, Facebook, Home, Link as LinkIcon, Download, RefreshCw, BarChart2, Hash
+  Paperclip, Sliders, Mic, ArrowUp, LayoutGrid, Heart, PlaySquare, Target, Bot, Home, Link as LinkIcon, Download, RefreshCw, BarChart2, Hash, CreditCard
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useUser, useAuth, useClerk, SignIn } from "@clerk/clerk-react";
 import { Provider, UserData, AnalysisResult, RunHistoryItem, ChatMessage, View, UserSettings, SummaryStats, HubData } from "./types";
 import { MOCK_DOCTOR } from "./mockData";
 import { CustomLogo } from "./components/CustomLogo";
@@ -14,16 +15,23 @@ import { PublicProfile } from "./components/PublicProfile";
 
 export default function App() {
   const safeText = (val: any) => typeof val === 'object' && val !== null ? Object.values(val).join(' — ') : String(val || "");
+  const { isLoaded, isSignedIn } = useUser();
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
+  
   const [user, setUser] = useState<UserData | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
+  const [token, setToken] = useState<string | null>(null);
   const [mode, setMode] = useState<'admin' | 'public'>('admin');
   const [view, setView] = useState<View>("dashboard");
 
-  // AUTH STATE
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
+  useEffect(() => {
+    if (isSignedIn) {
+      getToken({ template: 'supabase' }).then(t => setToken(t));
+    } else {
+      setToken(null);
+    }
+  }, [isSignedIn, getToken]);
+
   const [leads, setLeads] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +188,24 @@ export default function App() {
   };
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success">("idle");
+  const handleStripeConnect = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/stripe/connect/onboard", { 
+        method: "POST", 
+        headers: { "Authorization": `Bearer ${token}` } 
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        showToast("Error al conectar con Stripe", "error");
+      }
+    } catch (e) {
+      showToast("Error de conexión con Stripe", "error");
+    }
+  };
+
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
@@ -194,22 +220,6 @@ export default function App() {
     } catch (err) { setSaveStatus("idle"); }
   };
 
-  const handleConnectFacebook = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch("/api/auth/facebook", {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else if (data.error) {
-        showToast(data.error);
-      }
-    } catch (error) {
-      console.error("Error connecting to Facebook:", error);
-    }
-  };
 
   const fetchHub = async () => {
     if (!token) return;
@@ -242,28 +252,12 @@ export default function App() {
     } catch (err) { setHubSaveStatus("idle"); }
   };
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true); setError(null);
-    try {
-      const endp = authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
-      const res = await fetch(endp, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: authEmail, password: authPassword }) });
-      if (res.headers.get("content-type")?.includes("application/json")) {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Fallo auth");
-        localStorage.setItem("token", data.token); localStorage.setItem("user", JSON.stringify(data.user));
-        setToken(data.token); setUser(data.user);
-      } else throw new Error("Servidor no responde (Falta DB). " + res.status);
-    } catch (err: any) { setError(err.message); } finally { setAuthLoading(false); }
-  };
-
-  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); setToken(null); setUser(null); };
+  const handleLogout = () => signOut();
 
   const fetchHistory = async () => {
     if (!token) return;
     try {
       const res = await fetch("/api/history", { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.status === 401) { handleLogout(); return; }
       if (res.ok) {
         const data = await res.json();
         setHistory(Array.isArray(data) ? data : []);
@@ -371,7 +365,11 @@ export default function App() {
   };
 
   // ----- AUTH SCREEN -----
-  if (!token) {
+  // ----- AUTH SCREEN -----
+  if (!isLoaded) {
+    return <div className="w-full h-screen flex items-center justify-center bg-[#fdfbf7]"><Loader2 className="w-10 h-10 animate-spin text-[#7E8A7A]" /></div>;
+  }
+  if (!isSignedIn) {
     return (
       <div className="w-full min-h-[100vh] flex items-center justify-center bg-[#fdfbf7] p-4 lg:p-8">
         <motion.div 
@@ -381,33 +379,23 @@ export default function App() {
         >
           {/* IMAGE SIDE */}
           <div className="hidden md:flex md:w-1/2 bg-[#fdfbf7] items-center justify-center relative overflow-hidden">
-             {/* Subjetc focus (tree) without background via mix-blend-multiply */}
              <div className="w-[85%] aspect-square rounded-full overflow-hidden flex items-center justify-center bg-[#fdfbf7] shadow-[inset_0_4px_30px_rgba(200,180,160,0.2)]">
                 <img src="/logo.png" alt="Tree of Life" className="w-[110%] h-[110%] object-cover z-20 mix-blend-multiply opacity-95 hover:scale-110 transition-transform duration-1000 ease-out" />
              </div>
           </div>
 
           {/* FORM SIDE */}
-          <div className="w-full md:w-1/2 p-10 lg:p-16 flex flex-col justify-center space-y-8 bg-[#fffdfa]">
-            <div className="text-center md:text-left space-y-2">
+          <div className="w-full md:w-1/2 p-10 lg:p-16 flex flex-col justify-center items-center space-y-8 bg-[#fffdfa]">
+            <div className="text-center space-y-2 w-full">
               <div className="md:hidden flex items-center justify-center mx-auto mb-6">
                 <img src="/logo.png" alt="Logo" className="w-32 h-32 rounded-full object-cover mix-blend-multiply drop-shadow-sm" />
               </div>
               <h1 className="text-4xl font-black tracking-tight text-[#2d2824]">Growtria</h1>
-              <p className="text-[#867562] font-medium tracking-wide">Inicia sesión en tu Studio</p>
+              <p className="text-[#867562] font-medium tracking-wide mb-8">Inicia sesión con tu cuenta segura</p>
             </div>
-
-            <form onSubmit={handleAuth} className="space-y-4">
-              <input required type="email" placeholder="Email" className="w-full px-5 py-4 rounded-3xl bg-[#faf7f2] border border-[#e5e0d8] focus:bg-white focus:border-[#d6c9bc] focus:ring-2 focus:ring-[#f5e3ce] outline-none text-sm font-bold transition-all placeholder-[#a69c92] text-[#4a3b32]" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-              <input required type="password" placeholder="Contraseña" className="w-full px-5 py-4 rounded-3xl bg-[#faf7f2] border border-[#e5e0d8] focus:bg-white focus:border-[#d6c9bc] focus:ring-2 focus:ring-[#f5e3ce] outline-none text-sm font-bold transition-all placeholder-[#a69c92] text-[#4a3b32]" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
-              {error && <div className="p-3 bg-red-50/50 text-red-500 text-[10px] rounded-xl flex items-center gap-2 font-bold uppercase"><AlertCircle size={14} /> {error}</div>}
-              <button disabled={authLoading} className="w-full bg-[#7E8A7A] text-white hover:bg-[#6b7567] hover:shadow-[0_8px_20px_rgba(126,138,122,0.3)] hover:-translate-y-1 font-black text-[15px] py-4 rounded-full transition-all duration-300 flex items-center justify-center gap-2 shadow-md mt-6">
-                {authLoading ? <Loader2 size={18} className="animate-spin" /> : null} {authMode === "login" ? "Acceder al Panel" : "Crear Cuenta"}
-              </button>
-            </form>
-
-            <div className="text-center md:text-left pt-2">
-              <button onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")} className="text-xs font-bold text-[#b5a698] hover:text-[#4a3b32] transition-colors uppercase tracking-widest">{authMode === "login" ? "¿Sin cuenta? Empieza gratis" : "¿Ya eres miembro? Inicia sesión"}</button>
+            
+            <div className="w-full max-w-sm">
+              <SignIn fallbackRedirectUrl="/" appearance={{ elements: { card: 'shadow-none bg-transparent', headerTitle: 'hidden', headerSubtitle: 'hidden', formButtonPrimary: 'bg-[#7E8A7A] hover:bg-[#6b7567] text-white font-bold' } }} />
             </div>
           </div>
         </motion.div>
@@ -933,6 +921,18 @@ export default function App() {
               {view === 'settings' && (
                 <div className="space-y-8">
                   <h2 className="text-3xl font-semibold tracking-tight">System Settings</h2>
+                  
+                  <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-4 mb-8 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-bl-full -z-10 opacity-50"></div>
+                    <h3 className="font-bold text-lg border-b border-slate-100 pb-3 flex items-center gap-2">
+                      <Target className="text-indigo-500" size={20} /> Finanzas y Pagos Automáticos
+                    </h3>
+                    <p className="text-sm text-slate-500">Conecta tu cuenta bancaria de manera segura a través de Stripe para empezar a cobrar citas y servicios directo desde tu Hub Público sin facturación manual.</p>
+                    <button onClick={handleStripeConnect} className="bg-[#635BFF] hover:bg-[#5249DE] text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all hover:shadow-lg active:-translate-y-0.5">
+                      <CreditCard size={18} /> Conectar con Stripe Connect
+                    </button>
+                  </div>
+
                   <form onSubmit={saveSettings} className="space-y-6">
                     <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-sm space-y-4">
                       <h3 className="font-bold text-sm border-b border-slate-100 pb-2 flex items-center justify-between">
@@ -981,36 +981,7 @@ export default function App() {
                       </div>
                     </div>
                     
-                    {/* META CONNECTION BLOCK */}
-                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-3xl border border-blue-100 shadow-sm space-y-4 relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
-                      
-                      <div className="relative z-10">
-                        <h3 className="font-bold text-lg text-blue-900 border-b border-blue-200/50 pb-3 flex items-center justify-between">
-                          <span className="flex items-center gap-2"><Facebook className="text-blue-600" size={20} /> Conexión Oficial con Meta API</span>
-                          {settings.has_facebook_token ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 text-[10px] uppercase tracking-wider rounded-full font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Conectado</span>
-                          ) : (
-                            <span className="px-3 py-1 bg-red-100 text-red-700 text-[10px] uppercase tracking-wider rounded-full font-bold flex items-center gap-1"><AlertCircle size={12} /> Desconectado</span>
-                          )}
-                        </h3>
-                        <p className="text-[13px] text-blue-800/80 font-medium mt-3 mb-5 leading-relaxed">
-                          La integración oficial con la <strong className="text-blue-900">Instagram Graph API</strong> permite a Jiro acceder directamente a las verdaderas impresiones, reproducciones y alcance de tus reels, reemplazando el uso de integraciones de terceros (como Apify) para una precisión de grado analítico.
-                        </p>
-                        
-                        <div className="flex gap-3 items-center">
-                          <button
-                            type="button"
-                            onClick={handleConnectFacebook}
-                            className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-sm transition-all flex-1 ${settings.has_facebook_token ? 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'}`}
-                          >
-                            <Facebook size={18} />
-                            {settings.has_facebook_token ? "Reconectar o Cambiar Instagram Business" : "Vincular Cuenta de Instagram Business"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+
 
                     <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-sm space-y-4">
                       <h3 className="font-bold text-sm border-b border-slate-100 pb-2">Claves de API (Seguridad)</h3>

@@ -2,6 +2,13 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { ClerkProvider } from '@clerk/clerk-react';
+
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!PUBLISHABLE_KEY) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY. Set it in your .env file.");
+}
 
 import React from 'react';
 
@@ -36,7 +43,9 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <ClerkProvider publishableKey={PUBLISHABLE_KEY} appearance={{ variables: { colorPrimary: '#E86B97' } }}>
+        <App />
+      </ClerkProvider>
     </ErrorBoundary>
   </StrictMode>,
 );
