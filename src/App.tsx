@@ -215,8 +215,16 @@ export default function App() {
     if (!token) return;
     try {
       const res = await fetch("/api/hub", { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) setHub(await res.json());
-    } catch (err) { }
+      if (res.ok) {
+        setHub(await res.json());
+        setError(null);
+      } else {
+        const err = await res.json();
+        setError(err.error || "Error al cargar la página");
+      }
+    } catch (err: any) { 
+      setError(err.message);
+    }
   };
 
   const [hubSaveStatus, setHubSaveStatus] = useState<"idle" | "saving" | "success">("idle");
@@ -558,124 +566,135 @@ export default function App() {
           {view !== 'dashboard' && (
             <div className="p-8 pb-32 max-w-3xl mx-auto w-full animate-in fade-in">
 
-              {view === 'editor' && hub && (
-                <div className="space-y-8">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-3xl font-semibold tracking-tight">Studio Público</h2>
-                    <button onClick={() => setMode('public')} className="flex items-center gap-2 bg-[#1a365d] text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-md hover:scale-105 transition-transform">
-                      <ExternalLink size={16} /> Ver Mi Página de Pacientes
-                    </button>
-                  </div>
-                  <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
-                    <form onSubmit={saveHub} className="space-y-6">
-                      <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><UserIcon size={20} className="text-[#dd8872]" /> Información Médica y Contacto</h3>
-                      
-                      <div className="flex items-center gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-200 bg-slate-50 flex items-center justify-center">
-                          {hub.avatar_url ? <img src={hub.avatar_url} className="w-full h-full object-cover" /> : <UserIcon size={24} className="text-slate-400" />}
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-500 block mb-2">Foto de Perfil del Profesional</label>
-                          <label className="bg-slate-100 font-bold text-slate-600 px-4 py-2 text-xs rounded-xl cursor-pointer hover:bg-slate-200 transition-colors inline-block text-center shadow-sm">
-                             {uploadingState['profile-avatar'] ? <Loader2 size={14} className="animate-spin" /> : "Subir/Cambiar Foto"}
-                             <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                               if (e.target.files?.[0]) {
-                                 setUploadingState(prev => ({...prev, 'profile-avatar': true}));
-                                 const fd = new FormData(); fd.append("file", e.target.files[0]);
-                                 fetch('/api/upload', { method: "POST", headers: {"Authorization": `Bearer ${token}`}, body: fd })
-                                   .then(r => r.json()).then(data => setHub({...hub, avatar_url: data.url}))
-                                   .finally(() => setUploadingState(prev => ({...prev, 'profile-avatar': false})));
-                               }
-                             }} />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Nombre Público del Doctor/Clínica</label><input required value={hub.title} onChange={e => setHub({ ...hub, title: e.target.value })} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
-                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Tu Enlace (Slug)</label><div className="flex bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden focus-within:border-[#dd8872] focus-within:bg-white transition-colors"><span className="pl-4 py-3 text-sm font-bold text-slate-400">growtria.com/</span><input required value={hub.slug} onChange={e => setHub({ ...hub, slug: e.target.value })} className="w-full bg-transparent px-2 py-3 text-sm outline-none font-medium text-slate-700" /></div></div>
-                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Especialidad</label><input required value={hub.specialty} onChange={e => setHub({ ...hub, specialty: e.target.value })} placeholder="Ej. Pediatra Pro-lactancia" className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
-                        <div><label className="text-[11px] font-bold text-slate-500 block mb-1">WhatsApp para Pacientes</label><input value={hub.whatsapp_number || ""} onChange={e => setHub({ ...hub, whatsapp_number: e.target.value })} placeholder="521..." className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Video de Introducción (Enlace a Reels/YouTube o Sube tu Video)</label>
-                        <div className="flex gap-2">
-                          <input value={hub.intro_video_url || ''} onChange={e => setHub({ ...hub, intro_video_url: e.target.value })} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" />
-                          <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-4 py-3 flex items-center justify-center rounded-2xl hover:bg-slate-200 cursor-pointer text-xs font-bold gap-2">
-                            {uploadingState['intro-video'] ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />} Subir
-                            <input type="file" className="hidden" accept="video/*" onChange={(e) => {
-                              if (e.target.files?.[0]) {
-                                setUploadingState(prev => ({...prev, 'intro-video': true}));
-                                const fd = new FormData(); fd.append("file", e.target.files[0]);
-                                fetch('/api/upload', { method: "POST", headers: {"Authorization": `Bearer ${token}`}, body: fd })
-                                  .then(r => r.json()).then(data => setHub({...hub, intro_video_url: data.url}))
-                                  .finally(() => setUploadingState(prev => ({...prev, 'intro-video': false})));
-                              }
-                            }} />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Bio Principal</label><textarea required value={hub.bio_text} onChange={e => setHub({ ...hub, bio_text: e.target.value })} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium min-h-[100px] focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
-
-                      <div className="pt-6 border-t border-slate-100">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-bold text-lg flex items-center gap-2"><BookOpen size={20} className="text-[#dd8872]" /> Infoproductos y Videos</h3>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => handleAddProduct('pdf')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-slate-200"><Plus size={14} /> PDF</button>
-                            <button type="button" onClick={() => handleAddProduct('video')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-slate-200"><Video size={14} /> Video</button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-4">
-                          {parsedProducts.length === 0 ? (
-                            <p className="text-xs text-slate-400 p-4 bg-slate-50 rounded-xl text-center border-dashed border border-slate-200">No hay recursos agregados. Añade PDFs o Links a Videos para pacientes.</p>
-                          ) : parsedProducts.map((prod: any, idx: number) => (
-                            <div key={prod.id || idx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl relative group">
-                              <button type="button" onClick={() => handleRemoveProduct(idx)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                                <div><label className="text-[10px] font-bold text-slate-400">Tipo / Formato</label><input value={prod.type} onChange={e => handleProductChange(idx, 'type', e.target.value)} placeholder="Ej. Guía PDF / YouTube" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
-                                <div><label className="text-[10px] font-bold text-slate-400">Título</label><input value={prod.title} onChange={e => handleProductChange(idx, 'title', e.target.value)} placeholder="Ej. Guía de Fiebre" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
-                              </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                                <div><label className="text-[10px] font-bold text-slate-400">Etiqueta (Tema)</label><input value={prod.tag} onChange={e => handleProductChange(idx, 'tag', e.target.value)} placeholder="Ej. Nutrición / Emergencias" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
-                                <div><label className="text-[10px] font-bold text-slate-400">URL Imagen Portada (Opcional)</label>
-                                  <div className="flex gap-2">
-                                    <input value={prod.image || ''} onChange={e => handleProductChange(idx, 'image', e.target.value)} placeholder="https://...jpg" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" />
-                                    <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-3 flex items-center justify-center rounded-lg hover:bg-slate-200 cursor-pointer">
-                                      {uploadingState[`${idx}-image`] ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-                                      <input type="file" className="hidden" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(idx, 'image', e.target.files[0]); }} />
-                                    </label>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div><label className="text-[10px] font-bold text-slate-400">Enlace Externo o Archivo Local (Obligatorio)</label>
-                                <div className="flex gap-2">
-                                  <input value={prod.link || ''} onChange={e => handleProductChange(idx, 'link', e.target.value)} placeholder="https://..." className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" />
-                                  <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-3 py-2 flex items-center justify-center rounded-lg hover:bg-slate-200 cursor-pointer text-xs font-bold gap-1">
-                                    {uploadingState[`${idx}-link`] ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />} Subir
-                                    <input type="file" className="hidden" accept="*" onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(idx, 'link', e.target.files[0]); }} />
-                                  </label>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end pt-4">
-                        <button type="submit" disabled={hubSaveStatus === 'saving'} className="bg-[#dd8872] disabled:opacity-50 text-white text-sm font-bold px-8 py-4 rounded-full hover:shadow-lg hover:scale-105 transition-all shadow-md flex items-center gap-2">
-                          {hubSaveStatus === 'saving' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                          {hubSaveStatus === 'success' ? 'Página Guardada y Pública' : 'Publicar Sitio del Paciente'}
+              {view === 'editor' && (
+                <>
+                  {!hub ? (
+                    <div className="flex flex-col items-center justify-center p-20 bg-slate-50 rounded-3xl border border-slate-200">
+                      <Loader2 size={32} className="animate-spin text-slate-400 mb-4" />
+                      <h3 className="text-lg font-bold text-slate-600">Cargando tu Studio...</h3>
+                      <p className="text-sm text-slate-400 text-center max-w-sm mt-2">Si esto tarda demasiado, recarga la página o verifica tu conexión.</p>
+                      {error && <p className="text-sm font-bold text-red-500 mt-4 border border-red-200 bg-red-50 px-4 py-2 rounded-xl text-center">Error: {error}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-3xl font-semibold tracking-tight">Studio Público</h2>
+                        <button onClick={() => setMode('public')} className="flex items-center gap-2 bg-[#1a365d] text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-md hover:scale-105 transition-transform">
+                          <ExternalLink size={16} /> Ver Mi Página de Pacientes
                         </button>
                       </div>
-                    </form>
-                  </div>
-                </div>
+                      <div className="bg-white p-8 rounded-3xl border border-[#ececeb] shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+                        <form onSubmit={saveHub} className="space-y-6">
+                          <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><UserIcon size={20} className="text-[#dd8872]" /> Información Médica y Contacto</h3>
+                          
+                          <div className="flex items-center gap-4 mb-6">
+                            <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-200 bg-slate-50 flex items-center justify-center">
+                              {hub.avatar_url ? <img src={hub.avatar_url} className="w-full h-full object-cover" /> : <UserIcon size={24} className="text-slate-400" />}
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-500 block mb-2">Foto de Perfil del Profesional</label>
+                              <label className="bg-slate-100 font-bold text-slate-600 px-4 py-2 text-xs rounded-xl cursor-pointer hover:bg-slate-200 transition-colors inline-block text-center shadow-sm">
+                                 {uploadingState['profile-avatar'] ? <Loader2 size={14} className="animate-spin" /> : "Subir/Cambiar Foto"}
+                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                   if (e.target.files?.[0]) {
+                                     setUploadingState(prev => ({...prev, 'profile-avatar': true}));
+                                     const fd = new FormData(); fd.append("file", e.target.files[0]);
+                                     fetch('/api/upload', { method: "POST", headers: {"Authorization": `Bearer ${token}`}, body: fd })
+                                       .then(r => r.json()).then(data => setHub({...hub, avatar_url: data.url}))
+                                       .finally(() => setUploadingState(prev => ({...prev, 'profile-avatar': false})));
+                                   }
+                                 }} />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Nombre Público del Doctor/Clínica</label><input required value={hub.title} onChange={e => setHub({ ...hub, title: e.target.value })} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
+                            <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Tu Enlace (Slug)</label><div className="flex bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden focus-within:border-[#dd8872] focus-within:bg-white transition-colors"><span className="pl-4 py-3 text-sm font-bold text-slate-400">growtria.com/</span><input required value={hub.slug} onChange={e => setHub({ ...hub, slug: e.target.value })} className="w-full bg-transparent px-2 py-3 text-sm outline-none font-medium text-slate-700" /></div></div>
+                            <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Especialidad</label><input required value={hub.specialty} onChange={e => setHub({ ...hub, specialty: e.target.value })} placeholder="Ej. Pediatra Pro-lactancia" className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
+                            <div><label className="text-[11px] font-bold text-slate-500 block mb-1">WhatsApp para Pacientes</label><input value={hub.whatsapp_number || ""} onChange={e => setHub({ ...hub, whatsapp_number: e.target.value })} placeholder="521..." className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-500 block mb-1">Video de Introducción (Enlace a Reels/YouTube o Sube tu Video)</label>
+                            <div className="flex gap-2">
+                              <input value={hub.intro_video_url || ''} onChange={e => setHub({ ...hub, intro_video_url: e.target.value })} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium focus:bg-white focus:border-[#dd8872] transition-colors" />
+                              <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-4 py-3 flex items-center justify-center rounded-2xl hover:bg-slate-200 cursor-pointer text-xs font-bold gap-2">
+                                {uploadingState['intro-video'] ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />} Subir
+                                <input type="file" className="hidden" accept="video/*" onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    setUploadingState(prev => ({...prev, 'intro-video': true}));
+                                    const fd = new FormData(); fd.append("file", e.target.files[0]);
+                                    fetch('/api/upload', { method: "POST", headers: {"Authorization": `Bearer ${token}`}, body: fd })
+                                      .then(r => r.json()).then(data => setHub({...hub, intro_video_url: data.url}))
+                                      .finally(() => setUploadingState(prev => ({...prev, 'intro-video': false})));
+                                  }
+                                }} />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div><label className="text-[11px] font-bold text-slate-500 block mb-1">Bio Principal</label><textarea required value={hub.bio_text} onChange={e => setHub({ ...hub, bio_text: e.target.value })} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 text-sm rounded-2xl outline-none font-medium min-h-[100px] focus:bg-white focus:border-[#dd8872] transition-colors" /></div>
+
+                          <div className="pt-6 border-t border-slate-100">
+                            <div className="flex justify-between items-center mb-4">
+                              <h3 className="font-bold text-lg flex items-center gap-2"><BookOpen size={20} className="text-[#dd8872]" /> Infoproductos y Videos</h3>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => handleAddProduct('pdf')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-slate-200"><Plus size={14} /> PDF</button>
+                                <button type="button" onClick={() => handleAddProduct('video')} className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-slate-200"><Video size={14} /> Video</button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              {parsedProducts.length === 0 ? (
+                                <p className="text-xs text-slate-400 p-4 bg-slate-50 rounded-xl text-center border-dashed border border-slate-200">No hay recursos agregados. Añade PDFs o Links a Videos para pacientes.</p>
+                              ) : parsedProducts.map((prod: any, idx: number) => (
+                                <div key={prod.id || idx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl relative group">
+                                  <button type="button" onClick={() => handleRemoveProduct(idx)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                    <div><label className="text-[10px] font-bold text-slate-400">Tipo / Formato</label><input value={prod.type} onChange={e => handleProductChange(idx, 'type', e.target.value)} placeholder="Ej. Guía PDF / YouTube" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
+                                    <div><label className="text-[10px] font-bold text-slate-400">Título</label><input value={prod.title} onChange={e => handleProductChange(idx, 'title', e.target.value)} placeholder="Ej. Guía de Fiebre" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                    <div><label className="text-[10px] font-bold text-slate-400">Etiqueta (Tema)</label><input value={prod.tag} onChange={e => handleProductChange(idx, 'tag', e.target.value)} placeholder="Ej. Nutrición / Emergencias" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" /></div>
+                                    <div><label className="text-[10px] font-bold text-slate-400">URL Imagen Portada (Opcional)</label>
+                                      <div className="flex gap-2">
+                                        <input value={prod.image || ''} onChange={e => handleProductChange(idx, 'image', e.target.value)} placeholder="https://...jpg" className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" />
+                                        <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-3 flex items-center justify-center rounded-lg hover:bg-slate-200 cursor-pointer">
+                                          {uploadingState[`${idx}-image`] ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+                                          <input type="file" className="hidden" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(idx, 'image', e.target.files[0]); }} />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div><label className="text-[10px] font-bold text-slate-400">Enlace Externo o Archivo Local (Obligatorio)</label>
+                                    <div className="flex gap-2">
+                                      <input value={prod.link || ''} onChange={e => handleProductChange(idx, 'link', e.target.value)} placeholder="https://..." className="w-full bg-white border border-slate-100 px-3 py-2 text-xs rounded-lg outline-none" />
+                                      <label className="flex-shrink-0 bg-slate-100 text-slate-600 px-3 py-2 flex items-center justify-center rounded-lg hover:bg-slate-200 cursor-pointer text-xs font-bold gap-1">
+                                        {uploadingState[`${idx}-link`] ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />} Subir
+                                        <input type="file" className="hidden" accept="*" onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(idx, 'link', e.target.files[0]); }} />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end pt-4">
+                            <button type="submit" disabled={hubSaveStatus === 'saving'} className="bg-[#dd8872] disabled:opacity-50 text-white text-sm font-bold px-8 py-4 rounded-full hover:shadow-lg hover:scale-105 transition-all shadow-md flex items-center gap-2">
+                              {hubSaveStatus === 'saving' ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                              {hubSaveStatus === 'success' ? 'Página Guardada y Pública' : 'Publicar Sitio del Paciente'}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {view === 'chat' && (

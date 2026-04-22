@@ -8,3 +8,8 @@ coverage/
 !.env.example
 database.sqlite
 *.sqlite
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+*.db

@@ -116,13 +116,6 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
-  // Add new columns if they don't exist
-  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN specialty TEXT").run(); } catch (e) {}
-  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN intro_video_url TEXT").run(); } catch (e) {}
-  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN products_json TEXT").run(); } catch (e) {}
-  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN certifications_json TEXT").run(); } catch (e) {}
-  try { db.prepare("ALTER TABLE hub_pages ADD COLUMN whatsapp_number TEXT").run(); } catch (e) {}
-
   CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     user_id TEXT,
@@ -879,19 +872,24 @@ async function startServer() {
   });
 
   app.post("/api/hub", authenticateToken, (req: any, res) => {
-    const { title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json, whatsapp_number, slug } = req.body;
-    db.prepare(`
-      UPDATE hub_pages 
-      SET title = ?, bio_text = ?, avatar_url = ?, specialty = ?, intro_video_url = ?, 
-          products_json = ?, certifications_json = ?, whatsapp_number = ?, slug = ?,
-          updated_at = CURRENT_TIMESTAMP 
-      WHERE user_id = ?
-    `).run(
-      title || "", bio_text || "", avatar_url || "", specialty || "", intro_video_url || "",
-      products_json || "[]", certifications_json || "[]", whatsapp_number || "", slug,
-      req.user.id
-    );
-    res.json({ success: true });
+    try {
+      const { title, bio_text, avatar_url, specialty, intro_video_url, products_json, certifications_json, whatsapp_number, slug } = req.body;
+      db.prepare(`
+        UPDATE hub_pages 
+        SET title = ?, bio_text = ?, avatar_url = ?, specialty = ?, intro_video_url = ?, 
+            products_json = ?, certifications_json = ?, whatsapp_number = ?, slug = ?,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE user_id = ?
+      `).run(
+        title || "", bio_text || "", avatar_url || "", specialty || "", intro_video_url || "",
+        products_json || "[]", certifications_json || "[]", whatsapp_number || "", slug,
+        req.user.id
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[ERROR IN /api/hub POST]:", e.message);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Public Hub Route (No Authentication)
