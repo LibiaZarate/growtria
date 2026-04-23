@@ -36,9 +36,9 @@ const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
 async function getDoctorId(authId: string) {
   let { data, error } = await supabase.from('doctors').select('id').eq('clerk_user_id', authId).single();
   if (error || !data) {
-    const { data: newDoc } = await supabase.from('doctors').insert({ clerk_user_id: authId, name: 'Doctor' }).select().single();
+    const { data: newDoc, error: insertError } = await supabase.from('doctors').insert({ clerk_user_id: authId, name: 'Doctor' }).select().single();
     if (newDoc) return newDoc.id;
-    throw new Error("Doctor no encontrado");
+    throw new Error("No pudimos crear tu perfil de doctor en la base de datos. Error: " + JSON.stringify(insertError));
   }
   return data.id;
 }

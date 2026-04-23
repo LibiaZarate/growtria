@@ -1,13 +1,10 @@
-import Database from 'better-sqlite3';
-const db = new Database(':memory:');
-db.exec('CREATE TABLE foo (a, b, c)');
-try {
-  db.prepare('INSERT INTO foo VALUES (?, ?, ?)').run(1, 2);
-} catch (e) {
-  console.log("Error 1:", e.message);
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+dotenv.config();
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+async function test() {
+  console.log("Testing insert...");
+  const res = await supabase.from('doctors').insert({ clerk_user_id: 'test-uuid-123', name: 'Doctor' }).select().single();
+  console.log(res);
 }
-try {
-  db.prepare('INSERT INTO foo VALUES (?, ?, ?)').run([1, 2, 3]);
-} catch (e) {
-  console.log("Error 2:", e.message);
-}
+test();
