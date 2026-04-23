@@ -97,9 +97,14 @@ export default function App() {
   }, [chatMessages]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
+    if (token) {
+      if (session?.user) {
+        setUser({ 
+           id: session.user.id, 
+           email: session.user.email,
+           username: session.user.email?.split('@')[0] || "Doctor"
+        });
+      }
       fetchHistory();
       fetchSettings();
       fetchSummary();
@@ -108,7 +113,7 @@ export default function App() {
       fetchLeads();
       fetchMetrics();
     }
-  }, [token]);
+  }, [token, session]);
 
   // BACKEND CALLS
   const fetchChatMessages = async () => {
