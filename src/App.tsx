@@ -7,17 +7,23 @@ import {
   Paperclip, Sliders, Mic, ArrowUp, LayoutGrid, Heart, PlaySquare, Target, Bot, Home, Link as LinkIcon, Download, RefreshCw, BarChart2, Hash, CreditCard
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useUser, useAuth, useClerk, SignIn } from "@clerk/clerk-react";
 import { Provider, UserData, AnalysisResult, RunHistoryItem, ChatMessage, View, UserSettings, SummaryStats, HubData } from "./types";
 import { MOCK_DOCTOR } from "./mockData";
 import { CustomLogo } from "./components/CustomLogo";
 import { PublicProfile } from "./components/PublicProfile";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function App() {
   const safeText = (val: any) => typeof val === 'object' && val !== null ? Object.values(val).join(' — ') : String(val || "");
-  const { isLoaded, isSignedIn } = useUser();
-  const { getToken } = useAuth();
-  const { signOut } = useClerk();
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  
+  const signOut = async () => supabase.auth.signOut();
   
   const [user, setUser] = useState<UserData | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -25,12 +31,21 @@ export default function App() {
   const [view, setView] = useState<View>("dashboard");
 
   useEffect(() => {
-    if (isSignedIn) {
-      getToken({ template: 'supabase' }).then(t => setToken(t));
-    } else {
-      setToken(null);
-    }
-  }, [isSignedIn, getToken]);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsSignedIn(!!session);
+      setToken(session?.access_token || null);
+      setIsLoaded(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setIsSignedIn(!!session);
+      setToken(session?.access_token || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const [leads, setLeads] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<any[]>([]);
@@ -365,7 +380,18 @@ export default function App() {
   };
 
   // ----- AUTH SCREEN -----
-  // ----- AUTH SCREEN -----
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) showToast(error.message, "error");
+    setAuthLoading(false);
+  };
+
   if (!isLoaded) {
     return <div className="w-full h-screen flex items-center justify-center bg-[#fdfbf7]"><Loader2 className="w-10 h-10 animate-spin text-[#7E8A7A]" /></div>;
   }
@@ -394,9 +420,19 @@ export default function App() {
               <p className="text-[#867562] font-medium tracking-wide mb-8">Inicia sesión con tu cuenta segura</p>
             </div>
             
-            <div className="w-full max-w-sm">
-              <SignIn fallbackRedirectUrl="/" appearance={{ elements: { card: 'shadow-none bg-transparent', headerTitle: 'hidden', headerSubtitle: 'hidden', formButtonPrimary: 'bg-[#7E8A7A] hover:bg-[#6b7567] text-white font-bold' } }} />
-            </div>
+            <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-[#867562] mb-1">Email</label>
+                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required className="w-full bg-white border border-[#ececeb] rounded-2xl px-4 py-3 text-[#2d2824] outline-none focus:border-[#7E8A7A]" placeholder="tu@email.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-[#867562] mb-1">Contraseña</label>
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required className="w-full bg-white border border-[#ececeb] rounded-2xl px-4 py-3 text-[#2d2824] outline-none focus:border-[#7E8A7A]" placeholder="••••••••" />
+              </div>
+              <button type="submit" disabled={authLoading} className="w-full bg-[#7E8A7A] hover:bg-[#6b7567] text-white font-bold py-3 px-4 rounded-2xl transition-colors mt-4 flex justify-center items-center">
+                {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Ingresar"}
+              </button>
+            </form>
           </div>
         </motion.div>
       </div>

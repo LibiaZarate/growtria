@@ -1,6 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
 import { createClient } from "@supabase/supabase-js";
-import { clerkMiddleware, requireAuth as clerkRequireAuth } from "@clerk/express";
 import Stripe from "stripe";
 import { ApifyClient } from "apify-client";
 import { GoogleGenAI } from "@google/genai";
@@ -23,27 +22,27 @@ const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" as any });
 
 const app = express();
 app.use(express.json());
-app.use(clerkMiddleware());
 
-const requireAuth = clerkRequireAuth();
+const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Invalid session" });
+  (req as any).auth = { userId: user.id };
+  next();
+};
 
-// Helper to get local doctor_id from Clerk userId
-async function getDoctorId(clerkId: string) {
-  const { data, error } = await supabase.from('doctors').select('id').eq('clerk_user_id', clerkId).single();
-  if (error || !data) throw new Error("Doctor no encontrado");
+// Helper to get local doctor_id from Supabase userId
+async function getDoctorId(authId: string) {
+  let { data, error } = await supabase.from('doctors').select('id').eq('clerk_user_id', authId).single();
+  if (error || !data) {
+    const { data: newDoc } = await supabase.from('doctors').insert({ clerk_user_id: authId, name: 'Doctor' }).select().single();
+    if (newDoc) return newDoc.id;
+    throw new Error("Doctor no encontrado");
+  }
   return data.id;
 }
 
-// 1. CLERK WEBHOOK (Sincroniza Usuario)
-app.post("/api/webhooks/clerk", async (req, res) => {
-  const evt = req.body;
-  if (evt.type === "user.created") {
-    const { id, email_addresses } = evt.data;
-    const email = email_addresses[0]?.email_address;
-    await supabase.from("doctors").insert({ clerk_user_id: id, email });
-  }
-  res.json({ success: true });
-});
 
 // 2. STRIPE CONNECT ONBOARDING
 app.post("/api/stripe/connect/onboard", requireAuth, async (req: any, res) => {
