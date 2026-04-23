@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import { createClient } from "@supabase/supabase-js";
-import { ClerkExpressRequireAuth } from "@clerk/express";
+import { clerkMiddleware, requireAuth as clerkRequireAuth } from "@clerk/express";
 import Stripe from "stripe";
 import { ApifyClient } from "apify-client";
 import { GoogleGenAI } from "@google/genai";
@@ -23,8 +23,9 @@ const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" as any });
 
 const app = express();
 app.use(express.json());
+app.use(clerkMiddleware());
 
-const requireAuth = ClerkExpressRequireAuth({});
+const requireAuth = clerkRequireAuth();
 
 // Helper to get local doctor_id from Clerk userId
 async function getDoctorId(clerkId: string) {
