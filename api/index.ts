@@ -90,6 +90,45 @@ app.get("/api/settings", requireAuth, async (req: any, res) => {
     res.json(data || {});
   } catch(e) { res.status(500).json({ error: "Error" }); }
 });
+
+app.post("/api/settings", requireAuth, async (req: any, res) => {
+  try {
+    const docId = await getDoctorId(req.auth.userId);
+    const updates = req.body;
+    
+    // UPSERT settings
+    const { data: existing } = await supabase.from('user_settings').select('id').eq('doctor_id', docId).single();
+    
+    // Only pick fields that we defined in the basic schema to avoid DB crash if she hasn't run migrations
+    const safePayload = {
+      doctor_id: docId,
+      target_audience: updates.target_audience || "",
+      brand_values: updates.brand_values || "",
+      brand_personality: updates.brand_personality || "",
+      brand_vision: updates.brand_vision || "",
+      product_service: updates.product_service || "",
+      big_promise: updates.big_promise || "",
+      problems_solved: updates.problems_solved || "",
+      unique_mechanism: updates.unique_mechanism || "",
+      
+      instagram_url: updates.instagram_url || "",
+      ai_provider: updates.ai_provider || "gemini",
+      ai_api_key: updates.ai_api_key || "",
+      apify_token: updates.apify_token || ""
+    };
+
+    if (existing) {
+      await supabase.from('user_settings').update(safePayload).eq('doctor_id', docId);
+    } else {
+      await supabase.from('user_settings').insert(safePayload);
+    }
+    
+    res.json({ success: true });
+  } catch(e: any) { 
+    res.status(500).json({ error: e.message }); 
+  }
+});
+
 // 4. HUB ENDPOINTS
 app.get("/api/hub", requireAuth, async (req: any, res) => {
   try {
