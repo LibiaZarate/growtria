@@ -90,9 +90,6 @@ app.get("/api/settings", requireAuth, async (req: any, res) => {
     res.json(data || {});
   } catch(e) { res.status(500).json({ error: "Error" }); }
 });
-
-export default app;
-
 // 4. HUB ENDPOINTS
 app.get("/api/hub", requireAuth, async (req: any, res) => {
   try {
@@ -130,4 +127,6 @@ app.get("/api/public/hub/:slug", async (req, res) => {
     res.json(hub);
   } catch(e: any) { res.status(500).json({ error: e.message }); }
 });
+
+export default app;
 
