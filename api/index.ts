@@ -58,7 +58,7 @@ app.post("/api/stripe/connect/onboard", requireAuth, async (req: any, res) => {
       const account = await stripe.accounts.create({
         type: 'express',
         country: 'MX',
-        email: doc.email,
+        email: doc.email || undefined,
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },

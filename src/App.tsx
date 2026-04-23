@@ -225,10 +225,10 @@ export default function App() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        showToast("Error al conectar con Stripe", "error");
+        showToast(data.error || "Error al conectar con Stripe", "error");
       }
-    } catch (e) {
-      showToast("Error de conexión con Stripe", "error");
+    } catch (e: any) {
+      showToast(e.message || "Error al conectar con Stripe", "error");
     }
   };
 
