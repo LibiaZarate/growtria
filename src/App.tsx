@@ -36,7 +36,13 @@ export default function App() {
       setIsSignedIn(!!session);
       setToken(session?.access_token || null);
       setIsLoaded(true);
+    }).catch(err => {
+      console.error("Supabase auth error:", err);
+      setIsLoaded(true);
     });
+
+    // Failsafe: if supabase hangs, force load after 3 seconds
+    setTimeout(() => setIsLoaded(true), 3000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
